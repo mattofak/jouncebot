@@ -118,9 +118,9 @@ class JounceBot(irc.bot.SingleServerIRCBot):
         if len(next_events) > 0:
             for event in next_events:
                 td = event.start - ctime
-                conn.privmsg(source, "In %s hour(s) and %s minute(s): %s (%s)" % (
+                conn.privmsg(source, "In %d hour(s) and %d minute(s): %s (%s)" % (
                     td.days * 24 + td.seconds / 60 / 60,
-                    td.seconds % 60,
+                    td.seconds % (60 * 60) / 60,
                     event.window,
                     event.url
                 ))
@@ -128,8 +128,12 @@ class JounceBot(irc.bot.SingleServerIRCBot):
     def on_deployment_event(self, next_events):
         if len(next_events) > 0:
             for event in next_events:
-                self.connection.notice(self.channel, "%s: You're up to deploy %s (%s)" % (
-                    ", ".join(event.owners),
+                if len(event.owners) > 0:
+                    nicks = "%s: " % (", ".join(event.owners))
+                else:
+                    nicks = ""
+                self.connection.notice(self.channel, "%sThe time is nigh to deploy %s (%s)" % (
+                    nicks,
                     event.window,
                     event.url
                 ))
@@ -170,7 +174,7 @@ if __name__ == "__main__":
     # Initialize some sort of logger
     logger = logging.getLogger('JounceBot')
     logger.setLevel(logging.DEBUG)
-    if sys.stdin.isatty():
+    if sys.stdin.isatty() or not configloader.values['logging']['useSyslog']:
         # Just need to log to the console
         handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(handler)

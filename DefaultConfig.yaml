@@ -6,7 +6,7 @@ irc:
   port: 6667
   channel: "#wikimedia-operations"
   nick: jouncebot
-  realname: "https://github.org/mattofak/jouncebot"
+  realname: "https://github.com/mattofak/jouncebot"
   password: SecretSauce
 
 mwclient:
@@ -14,3 +14,6 @@ mwclient:
   calPage: Deployments
 
 aclFile: /etc/jouncebot.acl.yaml
+
+logging:
+  useSyslog: no
