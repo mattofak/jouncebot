@@ -20,11 +20,16 @@ from optparse import OptionParser
 import os
 import re
 import sys
+import traceback
+from datetime import datetime
+import pytz
 
 class JounceBot(irc.bot.SingleServerIRCBot):
     #: logging.Logger ... for logging things to syslog
     logger = None
     config = None
+
+    #: DeployPage
     deploy_page = None
 
     def __init__(self, config, logger, deploy_page):
@@ -50,6 +55,10 @@ class JounceBot(irc.bot.SingleServerIRCBot):
         self.logger.info("Connected to server")
         self.logger.info("Authenticating with Nickserv")
         conn.privmsg('NickServ', "identify %s %s" % (self.config['irc']['nick'], self.config['irc']['password']))
+
+        self.logger.info("Getting information about the wiki and starting event handler")
+        self.deploy_page.start(self.on_deployment_event)
+
         self.logger.info("Attempting to join channel %s", self.channel)
         conn.join(self.channel)
 
@@ -57,45 +66,73 @@ class JounceBot(irc.bot.SingleServerIRCBot):
         self.logger.info("Successfully joined channel")
 
     def on_privmsg(self, conn, event):
-        self.do_command(conn, event, event.arguments[0])
+        self.do_command(conn, event, event.source.nick, event.arguments[0])
 
     def on_pubmsg(self, conn, event):
         msg_parts = event.arguments[0].split(" ", 1)
         if len(msg_parts) > 1:
             handle = re.match("^([a-z0-9_\-\|]+)", irc.strings.lower(msg_parts[0]))
             if handle and handle.group(0) == irc.strings.lower(self.connection.get_nickname()):
-                self.do_command(conn, event, msg_parts[1].strip())
+                self.do_command(conn, event, event.target, msg_parts[1].strip())
         return
 
-    def do_command(self, conn, event, cmd):
+    def do_command(self, conn, event, source, cmd):
         """ Attempt to perform a given command given to the bot via IRC
         :param irc.client.ServerConnection conn
         :param irc.client.Event event
         :param string cmd: String given to the bot via IRC (without bot name)
         """
-        nick = event.source.nick
         nickmask = event.source.userhost
-        self.logger.debug("Received command from %s!%s: %s" % (nick, nickmask, cmd))
+        self.logger.debug("Received command from %s at %s!%s: %s" % (source, event.source.nick, nickmask, cmd))
 
         cmd = cmd.split(" ", 1)
         if cmd[0].lower() in self.brain:
-            self.brain[cmd[0].lower()](self, conn, event, cmd, nick, nickmask)
+            self.brain[cmd[0].lower()](self, conn, event, cmd, source, nickmask)
 
-    def do_command_help(self, conn, event, cmd, nick, nickmask):
+    def do_command_help(self, conn, event, cmd, source, nickmask):
         """Prints the list of all commands known to the server"""
-        self.multiline_notice(conn, nick, """
+        self.multiline_notice(conn, source, """
             \x02**** JounceBot Help ****\x02
             JounceBot is a deployment helper bot for the Wikimedia Foundation.
             You can find my source at https://github.com/mattofak/jouncebot
             \x02Available commands:\x02"""
         )
         for cmd in sorted(self.brain):
-            self.multiline_notice(conn, nick, " %-7s %s" % (cmd.upper(), self.brain[cmd].__doc__))
+            self.multiline_notice(conn, source, " %-7s %s" % (cmd.upper(), self.brain[cmd].__doc__))
 
     def do_command_die(self, conn, event, cmd, nick, nickmask):
         """Kill this bot"""
+        self.deploy_page.stop()
         self.die("Killed by %s" % nick)
         exit()
+
+    def do_command_refresh(self, conn, event, cmd, source, nickmask):
+        """Refresh my knowledge about deployments"""
+        self.deploy_page.reparse(True)
+        conn.privmsg(source, "I refreshed my knowledge about deployments.")
+
+    def do_command_next(self, conn, event, cmd, source, nickmask):
+        """Get the next deployment event(s if they happen at the same time)"""
+        ctime = datetime.now(pytz.utc)
+        next_events = self.deploy_page.get_next_events()
+        if len(next_events) > 0:
+            for event in next_events:
+                td = event.start - ctime
+                conn.privmsg(source, "In %s hour(s) and %s minute(s): %s (%s)" % (
+                    td.days * 24 + td.seconds / 60 / 60,
+                    td.seconds % 60,
+                    event.window,
+                    event.url
+                ))
+
+    def on_deployment_event(self, next_events):
+        if len(next_events) > 0:
+            for event in next_events:
+                self.connection.notice(self.channel, "%s: You're up to deploy %s (%s)" % (
+                    ", ".join(event.owners),
+                    event.window,
+                    event.url
+                ))
 
     def multiline_notice(self, conn, nick, text):
         lines = text.expandtabs().splitlines()
@@ -115,7 +152,9 @@ class JounceBot(irc.bot.SingleServerIRCBot):
 
     brain = {
         'help': do_command_help,
-        'die': do_command_die
+        'die': do_command_die,
+        'next': do_command_next,
+        'refresh': do_command_refresh,
     }
 
 if __name__ == "__main__":
@@ -142,9 +181,15 @@ if __name__ == "__main__":
 
     # Mwclient connection
     mw = mwclient.Site(host=('https', configloader.values['mwclient']['wiki']))
-    deploy_page = DeployPage
+    deploy_page = DeployPage(mw, configloader.values['mwclient']['calPage'], logger)
 
     # Create the application
-    bot = JounceBot(configloader.values, logger, mw)
+    bot = JounceBot(configloader.values, logger, deploy_page)
     logger.info("Attempting to connect to server")
-    bot.start()
+
+    try:
+        bot.start()
+    except Exception as ex:
+        deploy_page.stop()
+        traceback.print_exc()
+        exit(1)
