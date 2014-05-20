@@ -7,7 +7,8 @@ The known commands are:
     restart -- Disconnect the bot.  The bot will try to reconnect after 60 seconds.
 """
 
-import config_loader
+import configloader
+from deploypage import DeployPage
 import irc.bot
 import irc.buffer
 import irc.client
@@ -24,9 +25,9 @@ class JounceBot(irc.bot.SingleServerIRCBot):
     #: logging.Logger ... for logging things to syslog
     logger = None
     config = None
-    mwcon = None
+    deploy_page = None
 
-    def __init__(self, config, logger, mwcon):
+    def __init__(self, config, logger, deploy_page):
         self.config = config
         irc.bot.SingleServerIRCBot.__init__(
             self,
@@ -36,7 +37,7 @@ class JounceBot(irc.bot.SingleServerIRCBot):
         )
         self.channel = config['irc']['channel']
         self.logger = logger
-        self.mwcon = mwcon
+        self.deploy_page = deploy_page
 
         # Don't even get me started on how stupid a pattern this is
         irc.client.ServerConnection.buffer_class = irc.buffer.LenientDecodingLineBuffer
@@ -82,14 +83,13 @@ class JounceBot(irc.bot.SingleServerIRCBot):
 
     def do_command_help(self, conn, event, cmd, nick, nickmask):
         """Prints the list of all commands known to the server"""
-        self.multiline_notice(conn, nick,"""
-            \u0002**** JounceBot Help ****\u0002
+        self.multiline_notice(conn, nick, """
+            \x02**** JounceBot Help ****\x02
             JounceBot is a deployment helper bot for the Wikimedia Foundation.
             You can find my source at https://github.com/mattofak/jouncebot
-
-            Available commands:"""
+            \x02Available commands:\x02"""
         )
-        for cmd in self.brain:
+        for cmd in sorted(self.brain):
             self.multiline_notice(conn, nick, " %-7s %s" % (cmd.upper(), self.brain[cmd].__doc__))
 
     def do_command_die(self, conn, event, cmd, nick, nickmask):
@@ -98,9 +98,18 @@ class JounceBot(irc.bot.SingleServerIRCBot):
         exit()
 
     def multiline_notice(self, conn, nick, text):
-        lines = text.splitlines()
-        indent = lines[0].lstrip()
-        conn.notice(nick, lines[0])
+        lines = text.expandtabs().splitlines()
+        indent = sys.maxint
+        if lines[1:]:
+            stripped = lines[1].lstrip()
+            if stripped:
+                indent = min(indent, len(lines[1]) - len(stripped))
+        if lines[0] == '':
+            del lines[0]
+            conn.notice(nick, lines[0][indent:])
+        else:
+            conn.notice(nick, lines[0])
+
         for line in lines[1:]:
             conn.notice(nick, line[indent:])
 
@@ -115,9 +124,9 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
 
     # Attempt to load the configuration
-    config_loader.import_file(os.path.dirname(__file__) + '/DefaultConfig.yaml')
+    configloader.import_file(os.path.dirname(__file__) + '/DefaultConfig.yaml')
     if options.configFile is not None:
-        config_loader.import_file(options.configFile)
+        configloader.import_file(options.configFile)
 
     # Initialize some sort of logger
     logger = logging.getLogger('JounceBot')
@@ -132,8 +141,10 @@ if __name__ == "__main__":
         logger.addHandler(logging.handlers.SysLogHandler(address="/dev/log"))
 
     # Mwclient connection
-    mw = mwclient.Site(host=('https', config_loader.values['mwclient']['wiki']))
+    mw = mwclient.Site(host=('https', configloader.values['mwclient']['wiki']))
+    deploy_page = DeployPage
 
     # Create the application
-    bot = JounceBot(config_loader.values, logger, mw)
+    bot = JounceBot(configloader.values, logger, mw)
+    logger.info("Attempting to connect to server")
     bot.start()
