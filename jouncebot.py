@@ -195,5 +195,5 @@ if __name__ == "__main__":
         bot.start()
     except Exception as ex:
         deploy_page.stop()
-        traceback.print_exc()
+        logging.exception("Unhandled exception. Terminating.")
         exit(1)
