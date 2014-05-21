@@ -126,12 +126,13 @@ class DeployPage:
     def _set_deploy_timer(self):
         next_events = self.get_next_events()
         if len(next_events) > 0:
-            td = math.floor((next_events[0].start - datetime.now(pytz.utc)).total_seconds())
+            td = math.floor((next_events[0].start - datetime.now(pytz.utc)).total_seconds()) + 5
             if self.notify_timer:
                 self.notify_timer.cancel()
 
             self.logger.debug( "Setting deploy timer to %s for %s" % (td, next_events[0]))
             self.notify_timer = Timer(td, self._on_deploy_timer, [next_events])
+            self.notify_timer.start()
 
     def _on_deploy_timer(self, events):
         self.logger.info('Deploy timer kicked. Attempting to notify.')
