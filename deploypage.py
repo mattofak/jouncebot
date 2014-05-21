@@ -134,6 +134,8 @@ class DeployPage:
             self.notify_timer = Timer(td, self._on_deploy_timer, [next_events])
 
     def _on_deploy_timer(self, events):
+        self.logger.info('Deploy timer kicked. Attempting to notify.')
+        self.logger.debug("Num events: %s" % len(events))
         self.notify_callback(events)
         self._set_deploy_timer()
 
