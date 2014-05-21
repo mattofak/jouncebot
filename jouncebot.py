@@ -125,10 +125,6 @@ class JounceBot(irc.bot.SingleServerIRCBot):
                     event.url
                 ))
 
-    def do_command_fatal(self, conn, event, cmd, source, nickmask):
-        """Do something stupid and crash the bot"""
-        return 0/0
-
     def on_deployment_event(self, next_events):
         if len(next_events) > 0:
             for event in next_events:
@@ -162,8 +158,7 @@ class JounceBot(irc.bot.SingleServerIRCBot):
         'help': do_command_help,
         'die': do_command_die,
         'next': do_command_next,
-        'refresh': do_command_refresh,
-        'fatal': do_command_fatal
+        'refresh': do_command_refresh
     }
 
 if __name__ == "__main__":

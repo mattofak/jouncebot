@@ -131,7 +131,7 @@ class DeployPage:
                 self.notify_timer.cancel()
 
             self.logger.debug( "Setting deploy timer to %s for %s" % (td, next_events[0]))
-            self.notify_timer = Timer(td, self._on_deploy_timer, next_events)
+            self.notify_timer = Timer(td, self._on_deploy_timer, [next_events])
 
     def _on_deploy_timer(self, events):
         self.notify_callback(events)
