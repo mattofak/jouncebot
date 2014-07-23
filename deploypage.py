@@ -70,7 +70,10 @@ class DeployPage:
             window = stringify_children(item.xpath('td/span[@class="deploycal-window"]')[0]) \
                 .replace("\n", " ") \
                 .strip()
-            owners = map(lambda x: x.text, item.xpath('td/span[@class="ircnick"]/tt'))
+            owners = map(
+                lambda x: x.text,
+                item.xpath('td/span[@class="ircnick-container"]/span[@class="ircnick"]')
+            )
 
             item_obj = DeployItem(id, '%s#%s' % (self.page_url, id), start_time, end_time, window, owners)
 
